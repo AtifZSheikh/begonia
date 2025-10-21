@@ -1,0 +1,98 @@
+name: Download, Extract, and Upload Large Files
+
+on:
+  workflow_dispatch:  # Allows manual triggering from GitHub Actions
+
+jobs:
+  process-files:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install Required Tools
+        run: sudo apt-get install -y tar unzip aria2
+
+      - name: Download File (ZIP or TGZ)
+        run: |
+          FILE_URL="https://bn.d.miui.com/V12.5.10.0.RGGINXM/miui_BEGONIAININGlobal_V12.5.10.0.RGGINXM_4716f60949_11.0.zip"  # Change this URL
+          OUTPUT_FILE="downloaded_file"
+
+          echo "🚀 Downloading file from $FILE_URL..."
+          aria2c -x 16 -s 16 -k 1M --allow-overwrite=true -o $OUTPUT_FILE "$FILE_URL"
+
+          echo "✅ Download completed. Checking file size..."
+          ls -lh $OUTPUT_FILE
+
+      - name: Rename File Based on Type
+        run: |
+          FILE_TYPE=$(file --mime-type -b downloaded_file)
+          if [[ "$FILE_TYPE" == "application/gzip" ]]; then
+            mv downloaded_file file.tgz
+          elif [[ "$FILE_TYPE" == "application/zip" ]]; then
+            mv downloaded_file file.zip
+          else
+            echo "❌ ERROR: Unknown file format!"
+            exit 1
+          fi
+
+      - name: Extract File (ZIP or TGZ)
+        run: |
+          mkdir -p extracted_files
+          
+          if [[ -f "file.tgz" ]]; then
+            echo "📦 Extracting Gzip Compressed Tar File (.tgz or .tar.gz)..."
+            tar -xvzf file.tgz -C extracted_files
+          elif [[ -f "file.zip" ]]; then
+            echo "📦 Extracting ZIP file..."
+            unzip file.zip -d extracted_files
+          else
+            echo "❌ ERROR: No valid archive file found!"
+            exit 1
+          fi
+
+      - name: Identify Large Files
+        run: |
+          echo "🔍 Checking for files larger than 100MB..."
+          find extracted_files -type f -size +100M > large_files.txt || true
+          
+          if [ -s large_files.txt ]; then
+            echo "📂 Large files detected:"
+            cat large_files.txt
+          else
+            echo "✅ No large files found!"
+          fi
+
+      - name: Create GitHub Release for Large Files
+        if: ${{ hashFiles('large_files.txt') != '' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "extracted-files-${{ github.run_id }}"
+          name: "Extracted Files Release"
+          body: "These are the extracted files from the latest run."
+          files: extracted_files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove Large Files Before Commit
+        run: |
+          if [ -s large_files.txt ]; then
+            echo "🚫 Removing large files before committing..."
+            while IFS= read -r file; do
+              rm -f "$file"
+            done < large_files.txt
+          fi
+
+      - name: Commit and Push Small Extracted Files
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}  # GitHub Personal Access Token (store in secrets)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git
+
+          git checkout -b extracted-files  # Create a new branch for extracted files
+          git add extracted_files/*  # Add small extracted files
+          git commit -m "Added extracted small files (large files moved to release)"
+          git push origin extracted-files  # Push extracted files to new branch 
