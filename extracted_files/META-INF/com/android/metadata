@@ -1,0 +1,9 @@
+ota-property-files=metadata:69:317         
+ota-required-cache=0
+ota-type=BLOCK
+post-build=Redmi/begoniain/begoniain:11/RP1A.200720.011/V12.5.10.0.RGGINXM:user/release-keys
+post-build-incremental=V12.5.10.0.RGGINXM
+post-sdk-level=30
+post-security-patch-level=2022-04-01
+post-timestamp=1656557031
+pre-device=begoniain
